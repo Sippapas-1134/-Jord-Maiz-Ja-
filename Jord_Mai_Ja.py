@@ -139,3 +139,58 @@ class Credit_Card(Payment_Gateway):
         if card not in self.__credit_list:
             return False
         return True
+    
+class Cars:
+    def __init__(self, license: str, color: str, brand: str):
+        self.__license = license
+        self.__color = color
+        self.__brand = brand
+
+    @property
+    def license(self) -> str: return self.__license
+    @property
+    def color(self) -> str: return self.__color
+    @property
+    def brand(self) -> str: return self.__brand
+
+    def __str__(self): return f"{self.__license} ({self.__brand})"
+
+
+class Normal_Car(Cars): pass
+class Super_Car(Cars): pass
+
+
+class EV_Car(Cars):
+    def __init__(self, license: str, color: str, brand: str):
+        super().__init__(license, color, brand)
+        self.__isCharging = False
+        self.__current_battery = 100.0
+
+    @property
+    def isCharging(self) -> bool: return self.__isCharging
+    @isCharging.setter
+    def isCharging(self, value: bool): self.__isCharging = value
+
+    @property
+    def current_battery(self) -> float: return self.__current_battery
+    @current_battery.setter
+    def current_battery(self, value: float): self.__current_battery = value
+
+
+class Charging_Station:
+    def __init__(self, station_id: str, capacity: float):
+        self.__charging_station_id = station_id
+        self.__capacity = capacity
+        self.__status = "Idle"
+
+    @property
+    def charging_station_id(self) -> str: return self.__charging_station_id
+    @property
+    def capacity(self) -> float: return self.__capacity
+    @property
+    def status(self) -> str: return self.__status
+    @status.setter
+    def status(self, value: str): self.__status = value
+
+    def calculateChargingFee(self, kwh: float) -> float:
+        return kwh * 7.5

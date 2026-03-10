@@ -42,3 +42,36 @@ class Point:
 
     @property
     def expire_time(self) -> SystemClock: return self.__expire_time
+
+RewardPromo = namedtuple("RewardPromo", ["points_required", "promo_code"])
+
+class Promotion:
+    def __init__(self, promoCode: str, amount: float, is_flat: bool = False):
+        self.__promoCode = promoCode
+        self.__amount = amount
+        self.__is_flat = is_flat
+        self.__expire = clock.now() + timedelta(days=30)
+        self.__reward_promo_list: List[RewardPromo] = [
+            RewardPromo(100, "REDEEM100"),
+            RewardPromo(200, "REDEEM200"),
+        ]
+    @property
+    def reward_promo_list(self) -> List[RewardPromo]: return self.__reward_promo_list
+    @property
+    def promoCode(self) -> str: return self.__promoCode
+    @property
+    def amount(self) -> float: return self.__amount
+    @property
+    def expire(self) -> SystemClock: return self.__expire
+    @property
+    def is_flat(self) -> bool: return self.__is_flat
+
+    def calculateDiscount(self, base: float) -> float:
+        if self.__is_flat:
+            return self.__amount          # ← ลดตรง ๆ เป็นบาท
+        return base * (self.__amount / 100)  # ← ลดแบบ %
+
+    def validatePromotion(self, code: str) -> bool:
+        return self.__promoCode == code
+    
+    def get_reward_catalog(self) -> List[RewardPromo]: return self.__reward_promo_list

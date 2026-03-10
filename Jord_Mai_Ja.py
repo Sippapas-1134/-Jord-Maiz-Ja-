@@ -980,3 +980,137 @@ class PointReq(BaseModel): member_id: str; shop_id: str; amount: float
 class AddPromoToMemberReq(BaseModel): member_id: str; shop_id: str; promo_code: str
 class RedeemReq(BaseModel): member_id: str; points: int
 class ClockReq(BaseModel): date: str; time: str
+
+
+@app.post("/cars/add", tags=["Cars"])
+def add_car_api(req: CarReq):
+    return {"message": db.add_car(req.user_id, req.license, req.color, req.brand, req.car_type)}
+
+@app.delete("/cars/remove", tags=["Cars"])
+def remove_car_api(req: RemoveCarReq):
+    res = db.remove_car(req.user_id, req.license)
+    if "Error" in res: raise HTTPException(status_code=400, detail=res)
+    return {"message": res}
+
+@app.patch("/users/edit", tags=["Users"])
+def edit_user_api(req: EditUserReq):
+    res = db.edit_user_info(req.user_id, req.name, req.tele_num)
+    if "Error" in res: raise HTTPException(status_code=400, detail=res)
+    return {"message": res}
+
+@app.post("/upgrade", tags=["Users"])
+def upgrade_api(req: UpgradeReq):
+    res = db.upgrade_to_member(req.user_id, req.pay_method, req.acc, req.card_no)
+    if "Error" in res: raise HTTPException(status_code=400, detail=res)
+    return {"message": res}
+
+@app.post("/renew", tags=["Users"])
+def renew_api(req: RenewReq):
+    return {"message": db.renew_membership(req.member_id, req.pay_method, req.acc)}
+
+@app.post("/reserve", tags=["Reservation"])
+def reserve_api(req: ResReq):
+    try:
+        day, month, year = map(int, req.date.split("-"))
+        hour, minute = map(int, req.time.split("-"))
+        target = datetime(year, month, day, hour, minute)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Error: Invalid date/time format")
+    return db.create_reservation(req.user_id, req.license, req.slot_id, target)
+
+@app.post("/reserve/ev", tags=["Reservation"])
+def ev_reserve_api(req: EVResReq):
+    try:
+        day, month, year = map(int, req.date.split("-"))
+        hour, minute = map(int, req.time.split("-"))
+        target = datetime(year, month, day, hour, minute)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Error: Invalid date/time format")
+    res = db.create_ev_reservation(req.user_id, req.license, req.slot_id, target, req.kwh)
+    if isinstance(res, str) and "Error" in res:
+        raise HTTPException(status_code=400, detail=res)
+    return res
+
+@app.post("/pay", tags=["Payment"])
+def pay_api(req: PayReq):
+    return db.paying(req)
+
+@app.post("/cancel", tags=["Reservation"])
+def api_cancel(req: CancelReq):
+    res = db.cancel_reservation(req.user_id, req.res_id, req.acc)
+    if "Error" in res: raise HTTPException(status_code=400, detail=res)
+    return {"message": res}
+
+@app.get("/reservations/{user_id}", tags=["Reservation"])
+def reservation_history_api(user_id: str):
+    res = db.view_reservation_history(user_id)
+    if isinstance(res, str) and "Error" in res:
+        raise HTTPException(status_code=400, detail=res)
+    return {"reservations": res}
+
+@app.get("/history/{user_id}", tags=["History"])
+def history_api(user_id: str):
+    return {"history": db.view_transaction_history(user_id)}
+
+@app.get("/points/{user_id}", tags=["Points"])
+def view_points_api(user_id: str):
+    res = db.view_point_transactions(user_id)
+    if isinstance(res, str) and "Error" in res:
+        raise HTTPException(status_code=400, detail=res)
+    return {"points": res}
+
+@app.post("/point/add", tags=["Points"])
+def api_point(req: PointReq):
+    res = db.add_point_from_shop(req.member_id, req.shop_id, req.amount)
+    if "Error" in res: raise HTTPException(status_code=400, detail=res)
+    return {"message": res}
+
+@app.post("/points/redeem", tags=["Points"])
+def redeem_api(req: RedeemReq):
+    res = db.redeem_reward(req.member_id, req.points)
+    if isinstance(res, str) and "Error" in res:
+        raise HTTPException(status_code=400, detail=res)
+    return {"message": res}
+
+@app.get("/rewards/catalog", tags=["Points"])
+def get_reward_catalog():
+    catalog = Promotion("", 0).get_reward_catalog()
+    return {"rewards": [
+        f"points_required={r.points_required} | promo_code={r.promo_code}"
+        for r in catalog
+    ]}
+
+@app.post("/promotions/add-to-member", tags=["Shops"])
+def add_promo_to_member_api(req: AddPromoToMemberReq):
+    res = db.add_promotion_to_member(req.member_id, req.shop_id, req.promo_code)  # ← req.user_id → req.member_id
+    if "Error" in res: raise HTTPException(status_code=400, detail=res)
+    return {"message": res}
+
+@app.get("/promotions/{member_id}", tags=["Promotions"])
+def check_promotions_api(member_id: str):
+    res = db.check_promotions(member_id)
+    if isinstance(res, str) and "Error" in res:
+        raise HTTPException(status_code=400, detail=res)
+    return {"promotions": res}
+
+@app.post("/clock/set", tags=["Clock"])
+def set_clock(req: ClockReq):
+    result = clock.set_time(req.date, req.time)
+    if "Error" in result:
+        raise HTTPException(status_code=400, detail=result)
+    return {"message": result}
+
+@app.get("/clock/get", tags=["Clock"])
+def get_clock():
+    return {"current_time": clock.get_time()}
+
+@app.get("/slots/available", tags=["Slots"])
+def available_slots_api():
+    return {"available_slots": db.check_available_slots()}
+
+@app.get("/shops/{shop_id}/history", tags=["Shops"])
+def shop_history_api(shop_id: str):
+    res = db.view_shop_validation_history(shop_id)
+    if res and "Error" in res[0]:
+        raise HTTPException(status_code=400, detail=res[0])
+    return {"validation_history": res}

@@ -370,3 +370,163 @@ class Partner_Shop:
 
     def create_promotion(self, amount: float) -> int:
         return int(amount // 100)
+    
+class User:
+    def __init__(self, id: str, name: str, tele_num: str):
+        self.__id = id
+        self.__name = name
+        self.__tele_num = tele_num
+        self.__car: List[Cars] = []
+        self.__role = "General"
+        self.__user_status = "Active"
+        self.__reservation_list: List['Reservation'] = []
+        self.__transaction_list: List['Transaction'] = []
+
+    @property
+    def id(self) -> str: return self.__id
+
+    @property
+    def name(self) -> str: return self.__name
+    @name.setter
+    def name(self, value: str): self.__name = value
+
+    @property
+    def tele_num(self) -> str: return self.__tele_num
+    @tele_num.setter
+    def tele_num(self, value: str): self.__tele_num = value
+
+    @property
+    def car(self) -> List[Cars]: return self.__car
+
+    @property
+    def role(self) -> str: return self.__role
+    @role.setter
+    def role(self, value: str): self.__role = value
+
+    @property
+    def user_status(self) -> str: return self.__user_status
+    @user_status.setter
+    def user_status(self, value: str): self.__user_status = value
+
+    @property
+    def reservation_list(self) -> List['Reservation']: return self.__reservation_list
+
+    @property
+    def transaction_list(self) -> List['Transaction']: return self.__transaction_list
+
+    def view_transaction_history(self) -> List[str]:
+        return [t.get_info() for t in self.__transaction_list]
+
+    def view_reservation_history(self) -> List[str]:
+        return [
+            f"res_id={r.reservation_id} | license={r.Car.license} | slot={r.Parking_slot_time.Parking_slot.slot_id} | time_in={r.Parking_slot_time.time_in.strftime('%Y-%m-%d %H:%M')} | status={r.reservation_status} | amount={r.amount}"
+            for r in self.__reservation_list
+        ]
+
+    def add_car_to_user(self, lic: str, col: str, br: str, c_type: str, all_users: List['User']) -> str:
+        for u in all_users:
+            for c in u.car:
+                if c.license == lic: return "Error: License duplicated"
+        if len(self.__car) >= 2: return "Error: Limit 2 cars per user"
+        if not (lic[0:2].isalpha() and lic[2:].isdigit() and len(lic) == 6):
+            return "Error: License format invalid "
+        if c_type.upper() == "EV":
+            new_car = EV_Car(lic, col, br)
+        elif c_type.upper() == "NORMAL":
+            new_car = Normal_Car(lic, col, br)
+        elif c_type.upper() == "SUPER":
+            new_car = Super_Car(lic, col, br)
+        else:
+            return "Error: Invalid car type"
+        self.__car.append(new_car)
+        return f"Add car success | license={new_car.license} | color={new_car.color} | brand={new_car.brand} | type={c_type.upper()}"
+
+    def remove_car_from_user(self, lic: str) -> str:
+        for c in self.__car:
+            if c.license == lic:
+                self.__car.remove(c)
+                return "Remove car success"
+        return "Error: Car not found"
+
+    def edit_info(self, name: Optional[str], tele_num: Optional[str]) -> str:
+        if name: self.__name = name
+        if tele_num: self.__tele_num = tele_num
+        return f"User info updated | name={self.__name} | telephone={self.__tele_num}"
+
+
+class Member(User):
+    def __init__(self, u: User):
+        super().__init__(u.id, u.name, u.tele_num)
+        for c in u.car:
+            self.car.append(c)
+        for t in u.transaction_list:
+            self.transaction_list.append(t)
+        self.role = "Member"
+        self.__point: List[Point] = []
+        self.__expiry_date = clock.now() + timedelta(days=30)
+        self.__collected_promotion: List[Promotion] = [Promotion("DISC20", 20)]
+
+    @property
+    def point(self) -> List[Point]: return self.__point
+
+    @property
+    def expiry_date(self) -> SystemClock: return self.__expiry_date
+
+    @property
+    def collected_promotion(self) -> List[Promotion]: return self.__collected_promotion
+
+    def earn_point(self, p: Point):
+        self.__point.append(p)
+
+    def is_expired(self) -> bool:
+        return clock.now() > self.__expiry_date
+
+    def renew_membership(self):
+        self.__expiry_date = clock.now() + timedelta(days=30)
+
+    def check_member_id(self, mid: str) -> bool:
+        return self.id == mid
+
+    def view_point_transactions(self) -> List[str]:
+        return [
+            f"amount={p.amount} | expire={p.expire_time.strftime('%Y-%m-%d')}"
+            for p in self.__point
+        ]
+
+    def add_promotion(self, promo: Promotion) -> str:
+        for p in self.__collected_promotion:
+            if p.promoCode == promo.promoCode:
+                return "Error: Promotion already collected"
+        self.__collected_promotion.append(promo)
+        return f"Promotion {promo.promoCode} added"
+
+    def check_promotions(self) -> List[str]:
+        return [
+            f"code={p.promoCode} | discount={p.amount} | expire={p.expire.strftime('%Y-%m-%d')}"
+            for p in self.__collected_promotion
+        ]
+
+    def redeem_reward(self, points_to_redeem: int) -> str:
+        promo_ref = Promotion("", 0)
+        tier = next((r for r in promo_ref.reward_promo_list
+                     if r.points_required == points_to_redeem), None)
+        if not tier:
+            return "Error: Invalid points amount. Use 100 or 200"
+        total_points = sum(p.amount for p in self.__point)
+        if total_points < points_to_redeem:
+            return f"Error: Not enough points (have {total_points}, need {points_to_redeem})"
+        remaining = points_to_redeem
+        new_point_list = []
+        for p in self.__point:
+            if remaining <= 0:
+                new_point_list.append(p)
+            elif p.amount <= remaining:
+                remaining -= p.amount
+            else:
+                p.amount -= remaining
+                remaining = 0
+                new_point_list.append(p)
+        self.__point = new_point_list
+        new_promo = Promotion(tier.promo_code, 100.0, is_flat=True)
+        self.__collected_promotion.append(new_promo)
+        return f"redeemed={points_to_redeem} | promo_code={tier.promo_code} | points_remaining={sum(p.amount for p in self.__point)}"

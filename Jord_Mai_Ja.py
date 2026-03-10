@@ -586,3 +586,51 @@ class Transaction:
     def get_info(self) -> str:
         return f"trans_id={self.__trans_id} | amount={self.__Payment.total_amount} | method={self.__Payment.payment_method} | time={self.__payment_time.strftime('%Y-%m-%d %H:%M')}"
 
+class Reservation:
+    def __init__(self, res_id: str, user: User, car: Cars, lot: Parking_Lot, slot_time: Parking_Slot_Time):
+        self.__reservation_id = res_id
+        self.__User = user
+        self.__Car = car
+        self.__Parking_lot = lot
+        self.__Parking_slot_time = slot_time
+        self.__reservation_status = "Pending"
+        self.__amount = 0.0
+
+    @property
+    def reservation_id(self) -> str: return self.__reservation_id
+    @property
+    def User(self) -> User: return self.__User
+    @property
+    def Car(self) -> Cars: return self.__Car
+    @property
+    def Parking_lot(self) -> Parking_Lot: return self.__Parking_lot
+    @property
+    def Parking_slot_time(self) -> Parking_Slot_Time: return self.__Parking_slot_time
+
+    @property
+    def reservation_status(self) -> str: return self.__reservation_status
+    @reservation_status.setter
+    def reservation_status(self, value: str): self.__reservation_status = value
+
+    @property
+    def amount(self) -> float: return self.__amount
+    @amount.setter
+    def amount(self, value: float): self.__amount = value
+
+    def sumTotal(self, charging_fee: float = 0.0, parking_fee: float = 0.0, idle_fee: float = 0.0) -> float:
+        self.__amount = parking_fee + charging_fee + idle_fee
+        return self.__amount
+
+    def cancel(self, time_hours: float, penalty_sys: Penalty, gateway: Payment_Gateway) -> bool:
+        pen_amt = penalty_sys.calculatePenalty(time_hours)
+        if pen_amt > 0:
+            pay = Payment(self, "QR")
+            pay.total_amount = pen_amt
+            if not pay.processPayment(gateway):
+                return False
+        self.__Parking_slot_time.Parking_slot.set_status("AVAILABLE")
+        self.__reservation_status = "Cancelled"
+        return True
+
+    def findReservation(self, rid: str) -> bool:
+        return self.__reservation_id == rid

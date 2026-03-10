@@ -951,3 +951,32 @@ class Jord_System:
     def view_transaction_history(self, uid: str):
         user = self.check_user_id(uid)
         return user.view_transaction_history() if user else "Error: User not found"
+    
+db = Jord_System()
+db.User_list.append(User("U01", "Somchai", "081234"))
+m01 = Member(User("M01", "Nadech", "089999"))
+db.User_list.append(m01)
+db.Partner_shop_list.append(Partner_Shop("S01", "Central", "BKK"))
+
+class CarReq(BaseModel): user_id: str; license: str; color: str; brand: str; car_type: str
+class RemoveCarReq(BaseModel): user_id: str; license: str
+class EditUserReq(BaseModel): user_id: str; name: Optional[str] = None; tele_num: Optional[str] = None
+class UpgradeReq(BaseModel): 
+    user_id: str
+    pay_method: str
+    acc: Optional[str] = None
+    card_no: Optional[str] = None
+class RenewReq(BaseModel): member_id: str; pay_method: str; acc: str
+class ResReq(BaseModel): user_id: str; license: str; slot_id: str; date: str; time: str
+class EVResReq(BaseModel): user_id: str; license: str; slot_id: str; kwh: float; date: str; time: str
+class PayReq(BaseModel):
+    res_id: str
+    method: str                          
+    promo_code: Optional[str] = None     
+    acc: Optional[str] = None            
+    card_no: Optional[str] = None      
+class CancelReq(BaseModel): user_id: str; res_id: str; acc: str
+class PointReq(BaseModel): member_id: str; shop_id: str; amount: float
+class AddPromoToMemberReq(BaseModel): member_id: str; shop_id: str; promo_code: str
+class RedeemReq(BaseModel): member_id: str; points: int
+class ClockReq(BaseModel): date: str; time: str

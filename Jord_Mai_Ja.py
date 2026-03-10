@@ -194,3 +194,148 @@ class Charging_Station:
 
     def calculateChargingFee(self, kwh: float) -> float:
         return kwh * 7.5
+    
+class Parking_Slot:
+    def __init__(self, slot_id: str):
+        self.__slot_id = slot_id
+        self.__slot_status = "AVAILABLE"
+        self.__time_list = []
+
+    @property
+    def slot_id(self) -> str: return self.__slot_id
+    @property
+    def slot_status(self) -> str: return self.__slot_status
+    @property
+    def time_list(self) -> list: return self.__time_list
+
+    def calculateTime(self, time_in: datetime) -> float:
+        delta = clock.now() - time_in
+        hours = delta.total_seconds() / 3600
+        return round(hours, 2)
+
+    def set_status(self, status: str):
+        self.__slot_status = status
+
+    # ใน Parking_Slot — คำนวณค่าจอด Normal
+    def calculateParkingFee(self, time_in: datetime, bonus_hours: int = 0) -> float:
+        hours = self.calculateTime(time_in)
+        free_hours = 2 + bonus_hours  # ฟรี 2 ชม. + โบนัสจากแสตมป์
+        billable = max(0, hours - free_hours)
+        if billable <= 0:
+            return 0.0
+        fee = 0.0
+        # ชม. 3-4 (billable ชม. 1-2) → 20 บาท/ชม.
+        tier1 = min(billable, 2)
+        fee += tier1 * 20
+        # ชม. 5+ (billable ชม. 3+) → 50 บาท/ชม.
+        tier2 = max(0, billable - 2)
+        fee += tier2 * 50
+        return round(fee, 2)
+
+
+class Normal_Slot(Parking_Slot): pass
+
+
+class EV_Slot(Parking_Slot):
+    def __init__(self, slot_id: str, station: Charging_Station):
+        super().__init__(slot_id)
+        self.__Charging_station = station
+        self.__charge_done_time: Optional[datetime] = None  # ✅ เพิ่ม
+
+    @property
+    def charge_done_time(self) -> Optional[datetime]: return self.__charge_done_time
+    @charge_done_time.setter
+    def charge_done_time(self, value: datetime): self.__charge_done_time = value
+    @property
+    def Charging_station(self) -> Charging_Station: return self.__Charging_station
+
+    def checkAvaliable(self) -> bool:
+        return self.slot_status == "AVAILABLE"
+
+    def setStatus(self, status: str):
+        self.set_status(status)
+    
+    # ใน EV_Slot — เพิ่ม Idle Fee
+    def calculateIdleFee(self, charge_done_time: datetime) -> float:
+        idle_minutes = (clock.now() - charge_done_time).total_seconds() / 60
+        billable_minutes = max(0, idle_minutes - 15)
+        return round(billable_minutes * 20, 2)
+
+
+class Restricted_Slot(Parking_Slot):
+    def check_role(self, car: Cars) -> bool:
+        raise NotImplementedError
+class Super_Car_Slot(Restricted_Slot):
+    def check_role(self, car: Cars) -> bool:
+        return isinstance(car, Super_Car)
+class Disable_Person_Slot(Restricted_Slot):
+    def check_role(self, car: Cars) -> bool:
+        return isinstance(car, Normal_Car)
+
+
+class Floor:
+    def __init__(self, floor_status: str):
+        self.__parking_slot_list: List[Parking_Slot] = []
+        self.__floor_status = floor_status
+
+    @property
+    def parking_slot_list(self) -> List[Parking_Slot]: return self.__parking_slot_list
+    @property
+    def floor_status(self) -> str: return self.__floor_status
+
+    def addSlot(self, slot: Parking_Slot):
+        self.__parking_slot_list.append(slot)
+
+    def checkSlot(self):
+        return [
+            f"slot_id={s.slot_id} | type={type(s).__name__} | status={s.slot_status}"
+            for s in self.__parking_slot_list
+            if s.slot_status == "AVAILABLE"
+        ]
+
+
+class Parking_Lot:
+    def __init__(self, lot_id: str):
+        self.__parking_lot_id = lot_id
+        self.__floor_list: List[Floor] = []
+        self.__admin_log = []
+
+    @property
+    def parking_lot_id(self) -> str: return self.__parking_lot_id
+    @property
+    def floor_list(self) -> List[Floor]: return self.__floor_list
+    @property
+    def admin_log(self) -> list: return self.__admin_log
+
+    def find_available_slot(self, slot_id: str) -> Optional[Parking_Slot]:
+        for fl in self.__floor_list:
+            for s in fl.parking_slot_list:
+                if s.slot_id == slot_id and s.slot_status == "AVAILABLE":
+                    return s
+        return None
+
+    def find_available_ev_slot(self, slot_id: str) -> Optional[EV_Slot]:
+        for fl in self.__floor_list:
+            for s in fl.parking_slot_list:
+                if isinstance(s, EV_Slot) and s.slot_id == slot_id and s.slot_status == "AVAILABLE":
+                    return s
+        return None
+
+    def addFloor(self, floor: Floor):
+        self.__floor_list.append(floor)
+
+
+class Parking_Slot_Time:
+    def __init__(self, slot: Parking_Slot, time_in: datetime, time_out: Optional[datetime] = None):
+        self.__Parking_slot = slot
+        self.__time_in = time_in
+        self.__time_out = time_out
+
+    @property
+    def Parking_slot(self) -> Parking_Slot: return self.__Parking_slot
+    @property
+    def time_in(self) -> datetime: return self.__time_in
+    @property
+    def time_out(self) -> Optional[datetime]: return self.__time_out
+    @time_out.setter
+    def time_out(self, value: datetime): self.__time_out = value

@@ -530,3 +530,59 @@ class Member(User):
         new_promo = Promotion(tier.promo_code, 100.0, is_flat=True)
         self.__collected_promotion.append(new_promo)
         return f"redeemed={points_to_redeem} | promo_code={tier.promo_code} | points_remaining={sum(p.amount for p in self.__point)}"
+
+class Payment:
+    def __init__(self, res: 'Reservation', method: str):
+        self.__Reservation = res
+        self.__payment_method = method
+        self.__payment_status = "Pending"
+        self.__total_amount = 0.0
+        self.__discount = 0.0
+
+    @property
+    def Reservation(self) -> 'Reservation': return self.__Reservation
+    @property
+    def payment_method(self) -> str: return self.__payment_method
+    @property
+    def payment_status(self) -> str: return self.__payment_status
+    @payment_status.setter
+    def payment_status(self, value: str): self.__payment_status = value
+
+    @property
+    def total_amount(self) -> float: return self.__total_amount
+    @total_amount.setter
+    def total_amount(self, value: float): self.__total_amount = value
+
+    @property
+    def discount(self) -> float: return self.__discount
+
+    def use_promotion(self, promo: Promotion, base: float):
+        self.__discount = promo.calculateDiscount(base)
+
+    def calculateTotal(self, base: float) -> float:
+        self.__total_amount = base - self.__discount
+        return self.__total_amount
+
+    def processPayment(self, gateway: Payment_Gateway) -> bool:
+        return gateway.paying(self.__total_amount)
+
+
+class Transaction:
+    def __init__(self, user: User, payment: Payment):
+        self.__User = user
+        self.__Payment = payment
+        self.__payment_time = clock.now()
+        self.__trans_id = f"TX-{uuid.uuid4().hex[:6].upper()}"
+
+    @property
+    def User(self) -> User: return self.__User
+    @property
+    def Payment(self) -> Payment: return self.__Payment
+    @property
+    def payment_time(self) -> SystemClock: return self.__payment_time
+    @property
+    def trans_id(self) -> str: return self.__trans_id
+
+    def get_info(self) -> str:
+        return f"trans_id={self.__trans_id} | amount={self.__Payment.total_amount} | method={self.__Payment.payment_method} | time={self.__payment_time.strftime('%Y-%m-%d %H:%M')}"
+

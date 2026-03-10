@@ -634,3 +634,320 @@ class Reservation:
 
     def findReservation(self, rid: str) -> bool:
         return self.__reservation_id == rid
+
+class Jord_System:
+    def __init__(self):
+        self.__User_list: List[User] = []
+        self.__Reservation_list: List[Reservation] = []
+        self.__Partner_shop_list: List[Partner_Shop] = []
+
+        self.__Parking_lot = Parking_Lot("LOT_01")
+        fl = Floor("Open")
+        station = Charging_Station("CS1", 50.0)
+        fl.addSlot(EV_Slot("EV1", station))
+        fl.addSlot(Normal_Slot("N1"))
+        fl.addSlot(Super_Car_Slot("SC2"))
+        self.__Parking_lot.addFloor(fl)
+
+    @property
+    def User_list(self) -> List[User]: return self.__User_list
+    @property
+    def Reservation_list(self) -> List[Reservation]: return self.__Reservation_list
+    @property
+    def Partner_shop_list(self) -> List[Partner_Shop]: return self.__Partner_shop_list
+    @property
+    def Parking_lot(self) -> Parking_Lot: return self.__Parking_lot
+
+    def check_user_id(self, uid: str) -> Optional[User]:
+        for u in self.__User_list:
+            if u.id == uid: return u
+        return None
+
+    # --- Cancel Reservation ---
+    def cancel_reservation(self, uid: str, res_id: str, acc: str) -> str:
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        res = next((r for r in self.__Reservation_list if r.findReservation(res_id)), None)
+        if not res: return "Error: Reservation not found"
+        if res.User.id != uid: return "Error: Unauthorized"
+        time_diff = (res.Parking_slot_time.time_in - clock.now()).total_seconds() / 36000
+        pen = Penalty(1.0, "Late cancel", 100.0)
+        qr = QR_Code(acc)  # acc ต้องเป็นเลขบัญชี 8 หลัก
+        if res.cancel(time_diff, pen, qr):
+            return "Reservation cancelled successfully"
+        return "Error: Cancel failed (Invalid account format or penalty payment failed)"
+
+    # --- Add Point from Shop ---
+    def add_point_from_shop(self, uid: str, shop_id: str, amount: float) -> str:
+        shop = next((s for s in self.__Partner_shop_list if s.check_shop_id(shop_id)), None)
+        if not shop: return "Error: Shop not found"
+        user = self.check_user_id(uid)
+        if not isinstance(user, Member): return "Error: Not a Member"
+        pts_amount = shop.create_promotion(amount)
+        user.earn_point(Point(pts_amount))
+        shop.log_validation(user.name, pts_amount)  # ✅ บันทึก log
+        return f"Added {pts_amount} points to Member {user.name}, New total points: {sum(p.amount for p in user.point)}"
+
+    # --- Add Car ---
+    def add_car(self, uid: str, lic: str, col: str, br: str, c_type: str) -> str:
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        return user.add_car_to_user(lic, col, br, c_type, self.__User_list)
+
+    # --- Remove Car ---
+    def remove_car(self, uid: str, lic: str) -> str:
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        for res in self.__Reservation_list:
+            if res.Car.license == lic and res.reservation_status in ["Pending", "PAID"]:
+                return "Error: Car has active reservation"
+        return user.remove_car_from_user(lic)
+
+    # ใน Jord_System
+    def view_shop_validation_history(self, shop_id: str) -> List[str]:
+        shop = next((s for s in self.__Partner_shop_list if s.check_shop_id(shop_id)), None)
+        if not shop: return ["Error: Shop not found"]
+        return shop.view_validation_history()
+
+    # --- Edit User Info ---
+    def edit_user_info(self, uid: str, name: Optional[str], tele_num: Optional[str]) -> str:
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        return user.edit_info(name, tele_num)
+
+    # --- View Point Transaction (Member only) ---
+    def view_point_transactions(self, uid: str):
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        if not isinstance(user, Member): return "Error: Not a Member"
+        return user.view_point_transactions()
+
+    # --- Add Promotion To Member ---
+    # --- Add Promotion To Member ---
+    def add_promotion_to_member(self, uid: str, shop_id: str, promo_code: str) -> str:
+        shop = next((s for s in self.__Partner_shop_list if s.check_shop_id(shop_id)), None)
+        if not shop: return "Error: Shop not found"
+        user = self.check_user_id(uid)
+        if not isinstance(user, Member): return "Error: Not a Member"
+
+        valid_tiers = Promotion("", 0).reward_promo_list
+        tier = next((r for r in valid_tiers if r.promo_code == promo_code), None)
+        if not tier:
+            return f"Error: Invalid promo_code. Allowed: {[r.promo_code for r in valid_tiers]}"
+
+        return user.add_promotion(Promotion(promo_code, tier.points_required, is_flat=True))
+
+    # --- Check Promotion ---
+    def check_promotions(self, uid: str):
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        if not isinstance(user, Member): return "Error: Not a Member"
+        return user.check_promotions()
+
+    # --- Redeem Reward ---
+    def redeem_reward(self, uid: str, points_to_redeem: int) -> str:
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        if not isinstance(user, Member): return "Error: Not a Member"
+        return user.redeem_reward(points_to_redeem)
+
+    # --- Upgrade to Member ---
+    def upgrade_to_member(self, uid: str, pay_method: str, acc: Optional[str] = None, card_no: Optional[str] = None) -> str:
+        for i, u in enumerate(self.__User_list):
+            if u.id == uid:
+                has_qr_data     = bool(acc)
+                has_credit_data = bool(card_no)
+
+                if has_qr_data and has_credit_data:
+                    return "Error: Cannot provide both QR and Credit Card info"
+                if isinstance(u, Member): return "Error: Already Member"
+
+                if pay_method.upper() == "QR":
+                    if has_credit_data: return "Error: QR method selected, but Credit Card info provided"
+                    if not acc: return "Error: Missing account number (acc)"
+                    method = QR_Code(acc)
+                    pay = Payment(None, "QR")  # type: ignore
+
+                elif pay_method.upper() == "CREDIT":
+                    if has_qr_data: return "Error: Credit method selected, but QR info provided"
+                    if not card_no: return "Error: Missing card number (card_no)"
+                    method = Credit_Card(card_no)
+                    pay = Payment(None, "CREDIT")  # type: ignore
+
+                else:
+                    return "Error: Invalid payment method"
+
+                pay.total_amount = 300.0
+                if not pay.processPayment(method):
+                    return "Error: Payment failed (Invalid account format)"
+
+                self.__User_list[i] = Member(u)
+                return "Upgraded to Member"
+
+        return "Error: User not found"
+        
+    # ใน Jord_System
+    def check_available_slots(self) -> List[str]:
+        result = []
+        for fl in self.__Parking_lot.floor_list:
+            result.extend(fl.checkSlot())
+        return result
+
+    # --- Renew Membership ---
+    def renew_membership(self, uid: str, pay_method: str, acc: str) -> str:
+        user = self.check_user_id(uid)
+        if not user :
+            return "Error: User not found"
+        elif not isinstance(user, Member): 
+            return "Error: Not a member"
+        if pay_method.upper() == "QR": 
+            method = QR_Code(acc)  # acc ต้องเป็นเลขบัญชี 8 หลัก
+            pay = Payment(None, "QR")  # type: ignore
+        elif pay_method.upper() == "CREDIT":
+            method = Credit_Card(acc)  # acc ต้องเป็นเลขบัตร 6 หลัก
+            pay = Payment(None, "CREDIT")  # type: ignore
+        pay.total_amount = 500.0
+        if not pay.processPayment(method): return "Error: Payment failed (Invalid account format)"
+        user.renew_membership()
+        return f"Membership renewed successfully | expiry_date={user.expiry_date.strftime('%Y-%m-%d')}"
+
+    # --- Create Reservation ---
+    def create_reservation(self, uid: str, lic: str, slot_id: str, target: datetime):
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        my_car = next((c for c in user.car if c.license == lic), None)
+        if not my_car: return "Error: Car not found"
+        target_slot = self.__Parking_lot.find_available_slot(slot_id)
+        if not target_slot: return "Error: Slot not available"
+
+        # ✅ เช็ค role ถ้าเป็น Restricted_Slot
+        if isinstance(target_slot, Restricted_Slot):
+            if not target_slot.check_role(my_car):
+                return "Error: Car type not allowed for this slot"
+
+        target_slot.set_status("RESERVED")
+        res = Reservation(
+            f"RES-{uuid.uuid4().hex[:4].upper()}", user, my_car,
+            self.__Parking_lot, Parking_Slot_Time(target_slot, target)
+        )
+        self.__Reservation_list.append(res)
+        user.reservation_list.append(res)
+        return f"Reservation created | res_id={res.reservation_id}"
+
+    # --- EV Reservation ---
+    def create_ev_reservation(self, uid: str, lic: str, slot_id: str, target: datetime, kwh: float):
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        my_car = next((c for c in user.car if c.license == lic), None)
+        if not my_car: return "Error: Car not found"
+        if not isinstance(my_car, EV_Car): return "Error: Car is not an EV"
+        ev_slot = self.__Parking_lot.find_available_ev_slot(slot_id)
+        if not ev_slot: return "Error: EV Slot not available"
+        charging_fee = ev_slot.Charging_station.calculateChargingFee(kwh)
+        # เพิ่มหลัง charging_fee = ...
+        charge_hours = kwh / ev_slot.Charging_station.capacity
+        ev_slot.charge_done_time = target + timedelta(hours=charge_hours)  # ✅ เพิ่ม
+        ev_slot.set_status("RESERVED")
+        ev_slot.Charging_station.status = "In Use"
+        res = Reservation(
+            f"RES-{uuid.uuid4().hex[:4].upper()}", user, my_car,
+            self.__Parking_lot, Parking_Slot_Time(ev_slot, target)
+        )
+        res.amount = res.sumTotal(charging_fee)
+        self.__Reservation_list.append(res)
+        user.reservation_list.append(res)
+        return f"Reservation created | res_id={res.reservation_id} | slot_id={slot_id} | charging_kwh={kwh} | charging_fee={charging_fee} | total_amount={res.amount}"
+
+    # --- Pay ---
+    def paying(self, req: 'PayReq'):
+        res = next((r for r in self.__Reservation_list if r.reservation_id == req.res_id), None)
+        if not res:
+            raise HTTPException(status_code=404, detail="Error: Reservation not found")
+
+        # ✅ เช็คว่าจ่ายไปแล้วหรือยัง
+        if res.reservation_status == "PAID":
+            raise HTTPException(status_code=400, detail="Error: Reservation already paid")
+        if res.reservation_status == "Cancelled":
+            raise HTTPException(status_code=400, detail="Error: Reservation already cancelled")
+
+        # ล้าง placeholder "string" ออก ถือว่าเป็น None
+        promo_code = req.promo_code if req.promo_code and req.promo_code.strip().lower() != "string" else None
+        acc        = req.acc        if req.acc        and req.acc.strip().lower()        != "string" else None
+        card_no    = req.card_no    if req.card_no    and req.card_no.strip().lower()    != "string" else None
+
+        has_qr_data     = bool(acc)
+        has_credit_data = bool(card_no)
+
+        if has_qr_data and has_credit_data:
+            raise HTTPException(status_code=400, detail="Error: Cannot provide both QR and Credit Card info.")
+
+        if req.method.upper() == "QR":
+            if has_credit_data:
+                raise HTTPException(status_code=400, detail="Error: QR method selected, but Credit Card info provided.")
+            if not acc:
+                raise HTTPException(status_code=400, detail="Error: Missing account number (acc).")
+            gw  = QR_Code(acc)
+            pay = Payment(res, "QR")
+
+        elif req.method.upper() == "CREDIT":
+            if has_qr_data:
+                raise HTTPException(status_code=400, detail="Error: Credit method selected, but QR info provided.")
+            if not card_no:
+                raise HTTPException(status_code=400, detail="Error: Missing card number (card_no).")
+            gw  = Credit_Card(card_no)
+            pay = Payment(res, "CREDIT")
+
+        else:
+            raise HTTPException(status_code=400, detail="Error: Invalid payment method.")
+
+        slot = res.Parking_slot_time.Parking_slot
+        time_in = res.Parking_slot_time.time_in
+
+        # ควรเป็น
+        if isinstance(slot, EV_Slot):
+            parking_fee = 0.0
+            idle_fee = slot.calculateIdleFee(slot.charge_done_time) if slot.charge_done_time else 0.0
+        else:
+            parking_fee = slot.calculateParkingFee(time_in)
+            idle_fee = 0.0
+
+        pay.total_amount = parking_fee + idle_fee + (res.amount if res.amount > 0 else 0.0)
+
+        if promo_code and isinstance(res.User, Member):
+            still_available = any(p.promoCode == promo_code for p in res.User.collected_promotion)
+            if not still_available:
+                raise HTTPException(status_code=400, detail="Error: Promo code already used or not found")
+            for promo in res.User.collected_promotion:
+                if promo.validatePromotion(promo_code):
+                    pay.use_promotion(promo, pay.total_amount)
+                    pay.total_amount = pay.calculateTotal(pay.total_amount)
+                    if pay.total_amount < 0:
+                        pay.total_amount = 0.0
+                    res.User.collected_promotion.remove(promo)
+                    break
+
+        success = pay.processPayment(gw)
+
+        if success:
+            res.reservation_status = "PAID"
+            res.Parking_slot_time.Parking_slot.set_status("AVAILABLE")
+            tx = Transaction(res.User, pay)
+            res.User.transaction_list.append(tx)
+
+            # ✅ ลบ reservation ออกจาก list หลังจ่ายสำเร็จ
+            self.__Reservation_list.remove(res)
+            res.User.reservation_list.remove(res)
+
+            return f"Payment Success | trans_id={tx.trans_id} | total={pay.total_amount}"
+
+        raise HTTPException(status_code=400, detail="Error: Payment failed (Invalid account/card format)")
+
+    # --- View Transaction History ---
+    def view_reservation_history(self, uid: str):
+        user = self.check_user_id(uid)
+        if not user: return "Error: User not found"
+        return user.view_reservation_history()
+    
+    def view_transaction_history(self, uid: str):
+        user = self.check_user_id(uid)
+        return user.view_transaction_history() if user else "Error: User not found"

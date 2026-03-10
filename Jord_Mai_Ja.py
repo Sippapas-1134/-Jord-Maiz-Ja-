@@ -92,3 +92,50 @@ class Penalty:
     def calculatePenalty(self, time_hours: float) -> float:
         if time_hours <= 1.0: return self.__cash
         return 0.0
+
+class Payment_Gateway(ABC):
+    def __init__(self, account_number: str):
+        self.__account_number = account_number
+
+    @property
+    def account_number(self) -> str: return self.__account_number
+
+    @abstractmethod
+    def paying(self, amount: float) -> bool:
+        pass
+
+
+class QR_Code(Payment_Gateway):
+    def __init__(self, account_number: str):
+        super().__init__(account_number)
+        self.__account_list: List[str] = ["13245678", "87654321"]
+    
+    @property
+    def account_list(self) -> List[str]:
+        return self.__account_list
+
+    def paying(self, amount: float) -> bool:
+        acc = self.account_number
+        if not acc.isdigit() or len(acc) != 8:
+            return False
+        if acc not in self.__account_list:
+            return False
+        return True
+
+
+class Credit_Card(Payment_Gateway):
+    def __init__(self, card_number: str):
+        super().__init__(card_number)
+        self.__credit_list: List[str] = ["123456", "654321"]
+
+    @property
+    def credit_list(self) -> List[str]:
+        return self.__credit_list
+
+    def paying(self, amount: float) -> bool:
+        card = self.account_number
+        if not card.isdigit() or len(card) != 6:
+            return False
+        if card not in self.__credit_list:
+            return False
+        return True

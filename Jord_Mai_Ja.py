@@ -29,3 +29,16 @@ class SystemClock:
         return self.__current_time.strftime("%d-%m-%Y %H:%M")
 
 clock = SystemClock()
+
+class Point:
+    def __init__(self, amount: int):
+        self.__amount = amount
+        self.__expire_time = clock.now() + timedelta(days=365)
+
+    @property
+    def amount(self) -> int: return self.__amount
+    @amount.setter
+    def amount(self, value: int): self.__amount = value
+
+    @property
+    def expire_time(self) -> SystemClock: return self.__expire_time

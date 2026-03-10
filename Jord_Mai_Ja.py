@@ -75,3 +75,20 @@ class Promotion:
         return self.__promoCode == code
     
     def get_reward_catalog(self) -> List[RewardPromo]: return self.__reward_promo_list
+
+class Penalty:
+    def __init__(self, time: float, reason: str, cash: float):
+        self.__time = time
+        self.__reason = reason
+        self.__cash = cash
+
+    @property
+    def time(self) -> float: return self.__time
+    @property
+    def reason(self) -> str: return self.__reason
+    @property
+    def cash(self) -> float: return self.__cash
+
+    def calculatePenalty(self, time_hours: float) -> float:
+        if time_hours <= 1.0: return self.__cash
+        return 0.0

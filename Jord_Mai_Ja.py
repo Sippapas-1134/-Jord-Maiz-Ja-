@@ -339,3 +339,34 @@ class Parking_Slot_Time:
     def time_out(self) -> Optional[datetime]: return self.__time_out
     @time_out.setter
     def time_out(self, value: datetime): self.__time_out = value
+
+class Partner_Shop:
+    def __init__(self, shop_id: str, shop_name: str, location: str):
+        self.__shop_id = shop_id
+        self.__shop_name = shop_name
+        self.__location = location
+        self.__my_promotion: List[Promotion] = []
+        self.__validation_history: List[str] = []
+
+    @property
+    def shop_id(self) -> str: return self.__shop_id
+    @property
+    def shop_name(self) -> str: return self.__shop_name
+    @property
+    def location(self) -> str: return self.__location
+    @property
+    def my_promotion(self) -> List[Promotion]: return self.__my_promotion
+
+    def check_shop_id(self, sid: str) -> bool:
+        return self.__shop_id == sid
+
+    def log_validation(self, member_name: str, points: int):
+        self.__validation_history.append(
+            f"member={member_name} | points={points} | time={clock.now().strftime('%Y-%m-%d %H:%M')}"
+        )
+
+    def view_validation_history(self) -> List[str]:
+        return self.__validation_history if self.__validation_history else ["No history"]
+
+    def create_promotion(self, amount: float) -> int:
+        return int(amount // 100)

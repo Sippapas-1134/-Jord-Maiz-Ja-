@@ -10,7 +10,6 @@ import uuid
 mcp = FastMCP("Demo 🚀")
 app = FastAPI(title="จอดไหมจ้ะ (Jord-Maiz-Ja) : ระบบบริหารที่จอดรถ")
 
-# System Clock (เอาไว้จำลองเวลา)
 class SystemClock:
     def __init__(self):
         self.__current_time = datetime(2026, 3, 10, 8, 0)
@@ -95,7 +94,6 @@ class Penalty:
     def cash(self) -> float: return self.__cash
 
     def calculatePenalty(self, time_hours: float) -> float:
-
         if abs(time_hours) <= 1.0: return self.__cash
         return 0.0
 
@@ -330,10 +328,10 @@ class Parking_Lot:
 class Parking_Slot_Time:
     def __init__(self, slot: Parking_Slot, time_in: datetime, time_out: Optional[datetime] = None):
         self.__Parking_slot = slot
-        self.__time_in = time_in                     
+        self.__time_in = time_in
         self.__time_out = time_out
-        self.__actual_entry_time: Optional[datetime] = None   
-        self.__actual_exit_time: Optional[datetime] = None   
+        self.__actual_entry_time: Optional[datetime] = None
+        self.__actual_exit_time: Optional[datetime] = None
 
     @property
     def Parking_slot(self) -> Parking_Slot: return self.__Parking_slot
@@ -391,6 +389,83 @@ class Partner_Shop:
     def create_promotion(self, amount: float) -> int:
         return int(amount // 100)
 
+
+
+class Payment:
+    def __init__(self, res: 'Reservation', method: str):
+        self.__Reservation = res
+        self.__payment_method = method
+        self.__payment_status = "Pending"
+        self.__total_amount = 0.0
+        self.__discount = 0.0
+
+    @property
+    def Reservation(self) -> 'Reservation': return self.__Reservation
+    @property
+    def payment_method(self) -> str: return self.__payment_method
+    @property
+    def payment_status(self) -> str: return self.__payment_status
+    @payment_status.setter
+    def payment_status(self, value: str): self.__payment_status = value
+
+    @property
+    def total_amount(self) -> float: return self.__total_amount
+    @total_amount.setter
+    def total_amount(self, value: float): self.__total_amount = value
+
+    @property
+    def discount(self) -> float: return self.__discount
+
+    def use_promotion(self, promo: Promotion, base: float):
+        self.__discount = promo.calculateDiscount(base)
+
+    def calculateTotal(self, base: float) -> float:
+        self.__total_amount = base - self.__discount
+        return self.__total_amount
+
+    def processPayment(self, gateway: Payment_Gateway) -> bool:
+        return gateway.paying(self.__total_amount)
+
+    def get_payment_info(self) -> dict:
+        return {
+            "amount": self.__total_amount,
+            "payment_method": self.__payment_method
+        }
+
+
+class Transaction:
+    def __init__(self, user: 'User', payment: Optional[Payment] = None,
+                 trans_type: str = "payment", points: int = 0, shop_name: str = ""):
+        self.__User = user
+        self.__Payment = payment
+        self.__trans_type = trans_type
+        self.__points = points
+        self.__shop_name = shop_name
+        self.__payment_time = clock.now()
+        self.__trans_id = f"TX-{uuid.uuid4().hex[:6].upper()}"
+
+    @property
+    def User(self) -> 'User': return self.__User
+    @property
+    def Payment(self) -> Optional[Payment]: return self.__Payment
+    @property
+    def payment_time(self) -> datetime: return self.__payment_time
+    @property
+    def trans_id(self) -> str: return self.__trans_id
+
+    def get_info(self) -> str:
+        if self.__trans_type == "earn":
+            return (f"trans_id={self.__trans_id} | type=earn"
+                    f" | points={self.__points} | shop={self.__shop_name}"
+                    f" | time={self.__payment_time.strftime('%Y-%m-%d %H:%M')}")
+
+        pay_info = self.__Payment.get_payment_info()
+        return (f"trans_id={self.__trans_id} | type=payment"
+                f" | amount={pay_info['amount']}"
+                f" | method={pay_info['payment_method']}"
+                f" | time={self.__payment_time.strftime('%Y-%m-%d %H:%M')}")
+
+
 class User:
     def __init__(self, id: str, name: str, tele_num: str):
         self.__id = id
@@ -434,7 +509,7 @@ class User:
     @property
     def transaction_list(self) -> List['Transaction']: return self.__transaction_list
 
-    def view_transaction_history(self) -> List[str]:
+    def get_transaction_info(self) -> List[str]:
         return [t.get_info() for t in self.__transaction_list]
 
     def view_reservation_history(self) -> List[str]:
@@ -447,23 +522,9 @@ class User:
             for r in self.__reservation_list
         ]
 
-    def add_car_to_user(self, lic: str, col: str, br: str, c_type: str, all_users: List['User']) -> str:
-        for u in all_users:
-            for c in u.car:
-                if c.license == lic: return "Error: License duplicated"
-        if len(self.__car) >= 2: return "Error: Limit 2 cars per user"
-        if not (lic[0:2].isalpha() and lic[2:].isdigit() and len(lic) == 6):
-            return "Error: License format invalid"
-        if c_type.upper() == "EV":
-            new_car = EV_Car(lic, col, br)
-        elif c_type.upper() == "NORMAL":
-            new_car = Normal_Car(lic, col, br)
-        elif c_type.upper() == "SUPER":
-            new_car = Super_Car(lic, col, br)
-        else:
-            return "Error: Invalid car type"
-        self.__car.append(new_car)
-        return f"Add car success | license={new_car.license} | color={new_car.color} | brand={new_car.brand} | type={c_type.upper()}"
+    def add_car_to_user(self, car: Cars) -> str:
+        self.__car.append(car)
+        return "add_car_success"
 
     def remove_car_from_user(self, lic: str) -> str:
         for c in self.__car:
@@ -555,71 +616,6 @@ class Member(User):
         self.__collected_promotion.append(new_promo)
         return f"redeemed={points_to_redeem} | promo_code={tier.promo_code} | points_remaining={sum(p.amount for p in self.__point)}"
 
-class Payment:
-    def __init__(self, res: 'Reservation', method: str):
-        self.__Reservation = res
-        self.__payment_method = method
-        self.__payment_status = "Pending"
-        self.__total_amount = 0.0
-        self.__discount = 0.0
-
-    @property
-    def Reservation(self) -> 'Reservation': return self.__Reservation
-    @property
-    def payment_method(self) -> str: return self.__payment_method
-    @property
-    def payment_status(self) -> str: return self.__payment_status
-    @payment_status.setter
-    def payment_status(self, value: str): self.__payment_status = value
-
-    @property
-    def total_amount(self) -> float: return self.__total_amount
-    @total_amount.setter
-    def total_amount(self, value: float): self.__total_amount = value
-
-    @property
-    def discount(self) -> float: return self.__discount
-
-    def use_promotion(self, promo: Promotion, base: float):
-        self.__discount = promo.calculateDiscount(base)
-
-    def calculateTotal(self, base: float) -> float:
-        self.__total_amount = base - self.__discount
-        return self.__total_amount
-
-    def processPayment(self, gateway: Payment_Gateway) -> bool:
-        return gateway.paying(self.__total_amount)
-
-
-class Transaction:
-    def __init__(self, user: User, payment: Optional[Payment] = None,
-                 trans_type: str = "payment", points: int = 0, shop_name: str = ""):
-        self.__User = user
-        self.__Payment = payment
-        self.__trans_type = trans_type
-        self.__points = points
-        self.__shop_name = shop_name
-        self.__payment_time = clock.now()
-        self.__trans_id = f"TX-{uuid.uuid4().hex[:6].upper()}"
-
-    @property
-    def User(self) -> User: return self.__User
-    @property
-    def Payment(self) -> Optional[Payment]: return self.__Payment
-    @property
-    def payment_time(self) -> datetime: return self.__payment_time
-    @property
-    def trans_id(self) -> str: return self.__trans_id
-
-    def get_info(self) -> str:
-        if self.__trans_type == "earn":
-            return (f"trans_id={self.__trans_id} | type=earn"
-                    f" | points={self.__points} | shop={self.__shop_name}"
-                    f" | time={self.__payment_time.strftime('%Y-%m-%d %H:%M')}")
-        return (f"trans_id={self.__trans_id} | type=payment"
-                f" | amount={self.__Payment.total_amount} | method={self.__Payment.payment_method}"
-                f" | time={self.__payment_time.strftime('%Y-%m-%d %H:%M')}")
-
 
 class Reservation:
     def __init__(self, res_id: str, user: User, car: Cars, lot: Parking_Lot, slot_time: Parking_Slot_Time):
@@ -679,7 +675,6 @@ class Reservation:
             return "Error: Already checked in"
         if self.__reservation_status == "CheckedOut":
             return "Error: Already checked out, please proceed to payment"
-
         self.__Parking_slot_time.actual_entry_time = clock.now()
         self.__Parking_slot_time.Parking_slot.set_status("OCCUPIED")
         self.__reservation_status = "CheckedIn"
@@ -688,17 +683,14 @@ class Reservation:
             f" | slot={self.__Parking_slot_time.Parking_slot.slot_id}"
             f" | actual_entry={self.__Parking_slot_time.actual_entry_time.strftime('%Y-%m-%d %H:%M')}"
         )
-    
+
     def checkout(self) -> str:
         if self.__reservation_status != "CheckedIn":
             return f"Error: Must be checked in before checking out (current status: {self.__reservation_status})"
-
         self.__Parking_slot_time.actual_exit_time = clock.now()
         self.__reservation_status = "CheckedOut"
-
         slot = self.__Parking_slot_time.Parking_slot
         entry = self.__Parking_slot_time.actual_entry_time
-
         if isinstance(slot, EV_Slot):
             parking_fee = 0.0
             idle_fee = slot.calculateIdleFee(slot.charge_done_time) if slot.charge_done_time else 0.0
@@ -707,7 +699,6 @@ class Reservation:
             parking_fee = slot.calculateParkingFee(entry)
             idle_fee = 0.0
             estimated_total = parking_fee
-
         return (
             f"Check-out success | res_id={self.__reservation_id}"
             f" | actual_exit={self.__Parking_slot_time.actual_exit_time.strftime('%Y-%m-%d %H:%M')}"
@@ -715,6 +706,7 @@ class Reservation:
             f" | estimated_total={estimated_total}"
             f" | status=CheckedOut (please proceed to payment)"
         )
+
 
 class Jord_System:
     def __init__(self):
@@ -741,9 +733,17 @@ class Jord_System:
     def Parking_lot(self) -> Parking_Lot: return self.__Parking_lot
 
     def check_user_id(self, uid: str) -> Optional[User]:
-        for u in self.__User_list:
-            if u.id == uid: return u
+        for u in self.__User_list:      
+            if u.id == uid:             
+                return u
         return None
+
+
+    def view_transaction_history(self, uid: str):
+        user = self.check_user_id(uid)
+        if not user:
+            return "Error: ไม่พบผู้ใช้"            
+        return user.get_transaction_info()            
 
     def checkin(self, uid: str, res_id: str) -> str:
         user = self.check_user_id(uid)
@@ -752,7 +752,7 @@ class Jord_System:
         if not res: return "Error: Reservation not found"
         if res.User.id != uid: return "Error: Unauthorized"
         return res.checkin()
-    
+
     def checkout(self, uid: str, res_id: str) -> str:
         user = self.check_user_id(uid)
         if not user: return "Error: User not found"
@@ -770,7 +770,6 @@ class Jord_System:
         if res.reservation_status == "Cancelled": return "Error: Already cancelled"
         if res.reservation_status == "CheckedIn": return "Error: Already checked in, cannot cancel"
         if res.User.id != uid: return "Error: Unauthorized"
-
         if pay_method.upper() == "QR":
             if not acc: return "Error: Missing account number (acc)"
             gw = QR_Code(acc)
@@ -779,7 +778,6 @@ class Jord_System:
             gw = Credit_Card(card_no)
         else:
             return "Error: Invalid payment method"
-
         time_diff = abs((res.Parking_slot_time.time_in - clock.now()).total_seconds() / 3600)
         pen = Penalty(1.0, "Late cancel", 100.0)
         if res.cancel(time_diff, pen, gw):
@@ -800,10 +798,37 @@ class Jord_System:
         shop.log_validation(user.name, pts_amount)
         return f"Added {pts_amount} points to Member {user.name}, New total points: {sum(p.amount for p in user.point)}"
 
+
     def add_car(self, uid: str, lic: str, col: str, br: str, c_type: str) -> str:
+        for u in self.__User_list:               
+            for c in u.car:                      
+                if c.license == lic:             
+                    return "Error: ทะเบียนซ้ำ"  
+
         user = self.check_user_id(uid)
-        if not user: return "Error: User not found"
-        return user.add_car_to_user(lic, col, br, c_type, self.__User_list)
+        if not user:
+            return "Error: ทะเบียนไม่พบ User"  
+
+        if len(user.car) >= 2:
+            return "Error: มีรถลงทะเบียนมากกว่า 2"  
+
+        # validate_car_type (self-call)
+        if not (lic[0:2].isalpha() and lic[2:].isdigit() and len(lic) == 6):
+            return "Error: License format invalid"
+        if c_type.upper() not in ["EV", "SUPER", "NORMAL"]:
+            return "Error: ประเภทรถไม่ถูกต้อง"  
+
+        if c_type.upper() == "EV":
+            new_car = EV_Car(lic, col, br)       
+        elif c_type.upper() == "SUPER":
+            new_car = Super_Car(lic, col, br)    
+        else:
+            new_car = Normal_Car(lic, col, br)   
+
+        result = user.add_car_to_user(new_car)
+        if result == "add_car_success":
+            return f"Add car success | license={new_car.license} | color={new_car.color} | brand={new_car.brand} | type={c_type.upper()}"
+        return f"Error: {result}"
 
     def remove_car(self, uid: str, lic: str) -> str:
         user = self.check_user_id(uid)
@@ -893,7 +918,7 @@ class Jord_System:
             return "Error: Not a member"
         if pay_method.upper() == "QR":
             method = QR_Code(acc)
-            pay = Payment(None, "QR") 
+            pay = Payment(None, "QR")
         elif pay_method.upper() == "CREDIT":
             method = Credit_Card(acc)
             pay = Payment(None, "CREDIT")
@@ -981,7 +1006,6 @@ class Jord_System:
             raise HTTPException(status_code=400, detail="Error: Invalid payment method.")
 
         slot = res.Parking_slot_time.Parking_slot
-
         billing_entry = res.Parking_slot_time.billing_entry_time
 
         if isinstance(slot, EV_Slot):
@@ -1007,7 +1031,6 @@ class Jord_System:
                     break
 
         success = pay.processPayment(gw)
-
         if success:
             res.reservation_status = "PAID"
             res.Parking_slot_time.Parking_slot.set_status("AVAILABLE")
@@ -1021,11 +1044,6 @@ class Jord_System:
         user = self.check_user_id(uid)
         if not user: return "Error: User not found"
         return user.view_reservation_history()
-
-    def view_transaction_history(self, uid: str):
-        user = self.check_user_id(uid)
-        return user.view_transaction_history() if user else "Error: User not found"
-
 
 
 db = Jord_System()
@@ -1068,11 +1086,7 @@ class CheckOutReq(BaseModel): user_id: str; res_id: str
 # ---- Clock ----
 @mcp.tool()
 def set_clock(date: str, time: str) -> str:
-    """
-    ตั้งเวลาของระบบ (Simulated Clock)
-    date: รูปแบบ dd-mm-yyyy เช่น 01-01-2025
-    time: รูปแบบ hh-mm เช่น 08-30
-    """
+    """ตั้งเวลาของระบบ (Simulated Clock)\ndate: รูปแบบ dd-mm-yyyy\ntime: รูปแบบ hh-mm"""
     return clock.set_time(date, time)
 
 # ---- Slots ----
@@ -1084,52 +1098,34 @@ def check_available_slots() -> List[str]:
 # ---- Cars ----
 @mcp.tool()
 def add_car(user_id: str, license: str, color: str, brand: str, car_type: str) -> str:
-    """
-    เพิ่มรถให้ผู้ใช้
-    car_type: NORMAL | EV | SUPER
-    license: ตัวอักษร 2 ตัว + ตัวเลข 4 ตัว เช่น AB1234
-    """
+    """เพิ่มรถให้ผู้ใช้\ncar_type: NORMAL | EV | SUPER\nlicense: ตัวอักษร 2 ตัว + ตัวเลข 4 ตัว เช่น AB1234"""
     return db.add_car(user_id, license, color, brand, car_type)
 
 @mcp.tool()
 def remove_car(user_id: str, license: str) -> str:
-    """ลบรถออกจากบัญชีผู้ใช้ (ไม่สามารถลบได้ถ้ามีการจองที่ยังค้างอยู่)"""
+    """ลบรถออกจากบัญชีผู้ใช้"""
     return db.remove_car(user_id, license)
 
 # ---- Users ----
 @mcp.tool()
 def edit_user_info(user_id: str, name: Optional[str] = None, tele_num: Optional[str] = None) -> str:
-    """แก้ไขข้อมูลผู้ใช้ (ชื่อ และ/หรือ เบอร์โทร)"""
+    """แก้ไขข้อมูลผู้ใช้"""
     return db.edit_user_info(user_id, name, tele_num)
 
 @mcp.tool()
 def upgrade_to_member(user_id: str, pay_method: str, acc: Optional[str] = None, card_no: Optional[str] = None) -> str:
-    """
-    อัปเกรดผู้ใช้ทั่วไปเป็น Member (ค่าสมัคร 300 บาท)
-    pay_method: QR | CREDIT
-    acc: เลขบัญชี 8 หลัก (ถ้าใช้ QR)
-    card_no: เลขบัตร 6 หลัก (ถ้าใช้ CREDIT)
-    """
+    """อัปเกรดเป็น Member (300 บาท)\npay_method: QR | CREDIT"""
     return db.upgrade_to_member(user_id, pay_method, acc, card_no)
 
 @mcp.tool()
 def renew_membership(member_id: str, pay_method: str, acc: str) -> str:
-    """
-    ต่ออายุ Membership (ค่าต่ออายุ 500 บาท)
-    pay_method: QR | CREDIT
-    acc: เลขบัญชี 8 หลัก (QR) หรือ เลขบัตร 6 หลัก (CREDIT)
-    """
+    """ต่ออายุ Membership (500 บาท)\npay_method: QR | CREDIT"""
     return db.renew_membership(member_id, pay_method, acc)
 
 # ---- Reservation ----
 @mcp.tool()
 def create_reservation(user_id: str, license: str, slot_id: str, date: str, time: str) -> str:
-    """
-    จองที่จอดรถสำหรับรถปกติ (Normal / Super Car)
-    date: dd-mm-yyyy เช่น 01-01-2025
-    time: hh-mm เช่น 09-00
-    slot_id: เช่น N1, SC2
-    """
+    """จองที่จอดรถ\ndate: dd-mm-yyyy\ntime: hh-mm"""
     try:
         day, month, year = map(int, date.split("-"))
         hour, minute = map(int, time.split("-"))
@@ -1140,13 +1136,7 @@ def create_reservation(user_id: str, license: str, slot_id: str, date: str, time
 
 @mcp.tool()
 def create_ev_reservation(user_id: str, license: str, slot_id: str, kwh: float, date: str, time: str) -> str:
-    """
-    จองที่จอดรถพร้อมชาร์จไฟสำหรับรถ EV
-    slot_id: เช่น EV1
-    kwh: จำนวน kWh ที่ต้องการชาร์จ
-    date: dd-mm-yyyy
-    time: hh-mm
-    """
+    """จองที่จอดรถ EV พร้อมชาร์จไฟ"""
     try:
         day, month, year = map(int, date.split("-"))
         hour, minute = map(int, time.split("-"))
@@ -1157,48 +1147,28 @@ def create_ev_reservation(user_id: str, license: str, slot_id: str, kwh: float, 
 
 @mcp.tool()
 def cancel_reservation(user_id: str, res_id: str, pay_method: str, acc: Optional[str] = None, card_no: Optional[str] = None) -> str:
-    """
-    ยกเลิกการจอง (อาจมีค่าปรับ 100 บาท ถ้ายกเลิกน้อยกว่า 1 ชม. ก่อนเวลาจอง)
-    pay_method: QR | CREDIT
-    acc: เลขบัญชี 8 หลัก (ถ้าใช้ QR)
-    card_no: เลขบัตร 6 หลัก (ถ้าใช้ CREDIT)
-    """
+    """ยกเลิกการจอง"""
     return db.cancel_reservation(user_id, res_id, pay_method, acc, card_no)
 
 @mcp.tool()
 def view_reservation_history(user_id: str) -> List[str]:
-    """ดูประวัติการจองที่จอดรถของผู้ใช้ (แสดงเวลาเข้า/ออกจริงด้วย)"""
+    """ดูประวัติการจอง"""
     return db.view_reservation_history(user_id)
 
-# ---- [NEW] Check-in / Check-out ----
 @mcp.tool()
 def checkin(user_id: str, res_id: str) -> str:
-    """
-    เช็คอิน: บันทึกเวลาที่รถเข้าจอดจริง
-    - Slot status จะเปลี่ยนเป็น OCCUPIED
-    - Reservation status จะเปลี่ยนเป็น CheckedIn
-    """
+    """เช็คอิน"""
     return db.checkin(user_id, res_id)
 
 @mcp.tool()
 def checkout(user_id: str, res_id: str) -> str:
-    """
-    เช็คเอาท์: บันทึกเวลาที่รถออกจริง และแสดงยอดค่าจอดโดยประมาณ
-    - Reservation status จะเปลี่ยนเป็น CheckedOut
-    - หลังจากนี้ต้องไปชำระเงินด้วย pay
-    """
+    """เช็คเอาท์"""
     return db.checkout(user_id, res_id)
 
 # ---- Payment ----
 @mcp.tool()
 def pay(res_id: str, method: str, acc: Optional[str] = None, card_no: Optional[str] = None, promo_code: Optional[str] = None) -> str:
-    """
-    ชำระเงินค่าจอดรถ (ต้อง Check-out ก่อน)
-    method: QR | CREDIT
-    acc: เลขบัญชี 8 หลัก (ถ้าใช้ QR)
-    card_no: เลขบัตร 6 หลัก (ถ้าใช้ CREDIT)
-    promo_code: โค้ดโปรโมชัน (ถ้ามี เฉพาะ Member)
-    """
+    """ชำระเงิน\nmethod: QR | CREDIT"""
     req = PayReq(res_id=res_id, method=method, acc=acc, card_no=card_no, promo_code=promo_code)
     try:
         return db.paying(req)
@@ -1207,7 +1177,7 @@ def pay(res_id: str, method: str, acc: Optional[str] = None, card_no: Optional[s
 
 @mcp.tool()
 def view_transaction_history(user_id: str) -> List[str]:
-    """ดูประวัติธุรกรรมการชำระเงินของผู้ใช้"""
+    """ดูประวัติธุรกรรม"""
     result = db.view_transaction_history(user_id)
     if isinstance(result, str):
         return [result]
@@ -1216,15 +1186,12 @@ def view_transaction_history(user_id: str) -> List[str]:
 # ---- Points & Promotions ----
 @mcp.tool()
 def add_point_from_shop(member_id: str, shop_id: str, amount: float) -> str:
-    """
-    เพิ่ม Point ให้ Member จากการซื้อสินค้าที่ร้านพาร์ทเนอร์
-    amount: ยอดซื้อ (ทุก 100 บาท = 1 point)
-    """
+    """เพิ่ม Point จากร้านพาร์ทเนอร์"""
     return db.add_point_from_shop(member_id, shop_id, amount)
 
 @mcp.tool()
 def view_points(member_id: str) -> List[str]:
-    """ดู Point คงเหลือและวันหมดอายุของ Member"""
+    """ดู Point คงเหลือ"""
     result = db.view_point_transactions(member_id)
     if isinstance(result, str):
         return [result]
@@ -1232,15 +1199,12 @@ def view_points(member_id: str) -> List[str]:
 
 @mcp.tool()
 def redeem_reward(member_id: str, points: int) -> str:
-    """
-    แลก Point เป็น Promo Code
-    points: 100 → REDEEM100 | 200 → REDEEM200
-    """
+    """แลก Point เป็น Promo Code"""
     return db.redeem_reward(member_id, points)
 
 @mcp.tool()
 def check_promotions(member_id: str) -> List[str]:
-    """ดูโปรโมชันที่ Member มีอยู่ทั้งหมด"""
+    """ดูโปรโมชันของ Member"""
     result = db.check_promotions(member_id)
     if isinstance(result, str):
         return [result]
@@ -1248,24 +1212,22 @@ def check_promotions(member_id: str) -> List[str]:
 
 @mcp.tool()
 def add_promotion_to_member(member_id: str, shop_id: str, promo_code: str) -> str:
-    """
-    เพิ่มโปรโมชันให้ Member ผ่านร้านพาร์ทเนอร์
-    promo_code: REDEEM100 | REDEEM200
-    """
+    """เพิ่มโปรโมชันให้ Member"""
     return db.add_promotion_to_member(member_id, shop_id, promo_code)
 
 @mcp.tool()
 def get_reward_catalog() -> List[str]:
-    """ดูรายการรางวัลที่แลก Point ได้ทั้งหมด"""
+    """ดูรายการรางวัลที่แลก Point ได้"""
     catalog = Promotion("", 0).get_reward_catalog()
     return [f"points_required={r.points_required} | promo_code={r.promo_code}" for r in catalog]
 
-#---- Shops ----
+# ---- Shops ----
 @mcp.tool()
 def view_shop_validation_history(shop_id: str) -> List[str]:
-    """ดูประวัติการให้ Point แก่ Member ของร้านพาร์ทเนอร์"""
+    """ดูประวัติการให้ Point ของร้านพาร์ทเนอร์"""
     return db.view_shop_validation_history(shop_id)
 
+# ---- FastAPI endpoints ----
 @app.post("/cars/add", tags=["Cars"])
 def add_car_api(req: CarReq):
     return {"message": db.add_car(req.user_id, req.license, req.color, req.brand, req.car_type)}
@@ -1369,12 +1331,9 @@ def redeem_api(req: RedeemReq):
     return {"message": res}
 
 @app.get("/rewards/catalog", tags=["Points"])
-def get_reward_catalog():
+def get_reward_catalog_api():
     catalog = Promotion("", 0).get_reward_catalog()
-    return {"rewards": [
-        f"points_required={r.points_required} | promo_code={r.promo_code}"
-        for r in catalog
-    ]}
+    return {"rewards": [f"points_required={r.points_required} | promo_code={r.promo_code}" for r in catalog]}
 
 @app.post("/promotions/add-to-member", tags=["Shops"])
 def add_promo_to_member_api(req: AddPromoToMemberReq):
@@ -1390,14 +1349,14 @@ def check_promotions_api(member_id: str):
     return {"promotions": res}
 
 @app.post("/clock/set", tags=["Clock"])
-def set_clock(req: ClockReq):
+def set_clock_api(req: ClockReq):
     result = clock.set_time(req.date, req.time)
     if "Error" in result:
         raise HTTPException(status_code=400, detail=result)
     return {"message": result}
 
 @app.get("/clock/get", tags=["Clock"])
-def get_clock():
+def get_clock_api():
     return {"current_time": clock.get_time()}
 
 @app.get("/slots/available", tags=["Slots"])

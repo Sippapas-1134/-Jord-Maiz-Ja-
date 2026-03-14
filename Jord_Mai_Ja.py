@@ -114,9 +114,6 @@ class QR_Code(Payment_Gateway):
         super().__init__(account_number)
         self.__account_list: List[str] = ["13245678", "87654321"]
 
-    @property
-    def account_list(self) -> List[str]: return self.__account_list
-
     def paying(self, amount: float) -> bool:
         acc = self.account_number
         if not acc.isdigit() or len(acc) != 8:
@@ -130,9 +127,6 @@ class Credit_Card(Payment_Gateway):
     def __init__(self, card_number: str):
         super().__init__(card_number)
         self.__credit_list: List[str] = ["123456", "654321"]
-
-    @property
-    def credit_list(self) -> List[str]: return self.__credit_list
 
     def paying(self, amount: float) -> bool:
         card = self.account_number
@@ -302,11 +296,7 @@ class Parking_Lot:
         self.__admin_log = []
 
     @property
-    def parking_lot_id(self) -> str: return self.__parking_lot_id
-    @property
     def floor_list(self) -> List[Floor]: return self.__floor_list
-    @property
-    def admin_log(self) -> list: return self.__admin_log
 
     def find_available_slot(self, slot_id: str) -> Optional[Parking_Slot]:
         for fl in self.__floor_list:
@@ -369,10 +359,6 @@ class Partner_Shop:
     @property
     def shop_id(self) -> str: return self.__shop_id
     @property
-    def shop_name(self) -> str: return self.__shop_name
-    @property
-    def location(self) -> str: return self.__location
-    @property
     def my_promotion(self) -> List[Promotion]: return self.__my_promotion
 
     def check_shop_id(self, sid: str) -> bool:
@@ -400,10 +386,6 @@ class Payment:
         self.__discount = 0.0
 
     @property
-    def Reservation(self) -> 'Reservation': return self.__Reservation
-    @property
-    def payment_method(self) -> str: return self.__payment_method
-    @property
     def payment_status(self) -> str: return self.__payment_status
     @payment_status.setter
     def payment_status(self, value: str): self.__payment_status = value
@@ -412,9 +394,6 @@ class Payment:
     def total_amount(self) -> float: return self.__total_amount
     @total_amount.setter
     def total_amount(self, value: float): self.__total_amount = value
-
-    @property
-    def discount(self) -> float: return self.__discount
 
     def use_promotion(self, promo: Promotion, base: float):
         self.__discount = promo.calculateDiscount(base)
@@ -443,15 +422,6 @@ class Transaction:
         self.__shop_name = shop_name
         self.__payment_time = clock.now()
         self.__trans_id = f"TX-{uuid.uuid4().hex[:6].upper()}"
-
-    @property
-    def User(self) -> 'User': return self.__User
-    @property
-    def Payment(self) -> Optional[Payment]: return self.__Payment
-    @property
-    def payment_time(self) -> datetime: return self.__payment_time
-    @property
-    def trans_id(self) -> str: return self.__trans_id
 
     def get_info(self) -> str:
         if self.__trans_type == "earn":
@@ -482,13 +452,9 @@ class User:
 
     @property
     def name(self) -> str: return self.__name
-    @name.setter
-    def name(self, value: str): self.__name = value
 
     @property
     def tele_num(self) -> str: return self.__tele_num
-    @tele_num.setter
-    def tele_num(self, value: str): self.__tele_num = value
 
     @property
     def car(self) -> List[Cars]: return self.__car
